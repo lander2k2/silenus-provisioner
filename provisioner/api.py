@@ -1,8 +1,10 @@
+import os
+
 import falcon
 import hug
 import sqlalchemy
 
-import database as db
+from provisioner import db
 from models import JurisdictionType, Jurisdiction, ConfigurationTemplate
 
 
@@ -20,9 +22,9 @@ def get_objects(obj, obj_id, session):
 
 
 def get_object_attributes(obj, obj_id, session):
-    
+
     objects = get_objects(obj, obj_id, session)
-    
+
     object_attributes = []
     for o in objects:
         object_attributes.append(o.__attributes__())
@@ -78,7 +80,7 @@ def create_jurisdiction(jurisdiction_name: hug.types.text,
 
         jurisdiction_type = get_objects(JurisdictionType,
                                         jurisdiction_type_id,
-                                        session)[0]        
+                                        session)[0]
         configuration_template = get_objects(ConfigurationTemplate,
                                              configuration_template_id,
                                              session)[0]
@@ -112,7 +114,7 @@ def edit_jurisdiction(jurisdiction_id: hug.types.number, **edits):
         edits['jurisdiction_metadata'] = edits.pop('metadata')
 
     with db.transaction() as session:
-        jurisdiction = session.query(Jurisdiction).filter_by(id=jurisdiction_id)[0]
+        jurisdiction = get_objects(Jurisdiction, jurisdiction_id, session)[0]
 
         for attr in edits:
             if attr in ('name', 'jurisdiction_metadata', 'configuration'):
