@@ -18,30 +18,35 @@ PROVISIONER_DEFAULTS = {
     ],
     'configuration_templates': [
         {'id': 1,
-         'name': 'default_control_group',
-         'configuration': {'clusters_cidr': '10.0.0.0/8',
+         'name': 'alpha',
+         'configuration': {'control_cluster': False,  # if True provision control VPC and server
+                           'primary_cluster_cidr': '10.0.0.0/8',
+                           'support_cluster_cidr': '172.16.0.0/12',
+                           'control_cluster_cidr': '192.168.0.0/16',
                            'orchestrator': 'kubernetes',
                            'platform': 'amazon_web_services'},
          'default': True,
          'jurisdiction_type_id': 1},
         {'id': 2,
-         'name': 'dev_tier',
-         'configuration': {'cidr': '10.0.0.0/10',
-                           'controllers': 1,
+         'name': 'alpha_dev',
+         'configuration': {'support_cluster': False,  # if True create support VPC
+                           'primary_cluster_cidr': '10.0.0.0/11',  # 8 tiers/cg, 2,097,153 IPs
+                           'support_cluster_cidr': '172.16.0.0/15',  # 8 tiers/cg, 131,072 IPs
                            'dedicated_etcd': False,
+                           'controllers': 1,
                            'workers': 2},
          'default': True,
          'jurisdiction_type_id': 2},
         {'id': 3,
-         'name': 'dev01_cluster',
-         'configuration': {'cluster_dns_ip': '10.2.0.10',
+         'name': 'alpha_dev_01',
+         'configuration': {'host_cidr': '10.0.0.0/16',     #######################
+                           'pod_cidr': '10.1.0.0/16',      # ~10 clusters per tier
+                           'service_cidr': '10.2.0.0/24',  #######################
+                           'host_subnet_cidrs': ['10.0.0.0/19', '10.0.32.0/19'],  # 8192 IPs per subnet
                            'controller_ips': ['10.0.0.50'],
                            'etcd_ips': ['10.0.0.50'],
-                           'host_cidr': '10.0.0.0/16',
-                           'host_subnet_cidrs': ['10.0.0.0/20', '10.0.16.0/20'],
                            'kubernetes_api_ip': '10.2.0.1',
-                           'pod_cidr': '10.1.0.0/16',
-                           'service_cidr': '10.2.0.0/24'},
+                           'cluster_dns_ip': '10.2.0.10'},
          'default': True,
          'jurisdiction_type_id': 3}
     ]
