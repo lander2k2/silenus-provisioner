@@ -24,7 +24,8 @@ PROVISIONER_DEFAULTS = {
                            'support_cluster_cidr': '172.16.0.0/12',
                            'control_cluster_cidr': '192.168.0.0/16',
                            'orchestrator': 'kubernetes',
-                           'platform': 'amazon_web_services'},
+                           'platform': 'amazon_web_services',
+                           'region': 'us-east-1'},
          'default': True,
          'jurisdiction_type_id': 1},
         {'id': 2,
@@ -34,7 +35,7 @@ PROVISIONER_DEFAULTS = {
                            'support_cluster_cidr': '172.16.0.0/15',  # 8 tiers/cg, 131,072 IPs
                            'dedicated_etcd': False,
                            'controllers': 1,
-                           'workers': 2},
+                           'initial_workers': 2},
          'default': True,
          'jurisdiction_type_id': 2},
         {'id': 3,
