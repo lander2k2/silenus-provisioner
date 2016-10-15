@@ -6,6 +6,7 @@ import sqlalchemy
 
 from provisioner import db
 from models import JurisdictionType, Jurisdiction, ConfigurationTemplate
+from platforms import AWS
 
 
 def get_objects(obj, obj_id, session):
@@ -126,6 +127,61 @@ def edit_jurisdiction(jurisdiction_id: hug.types.number, **edits):
     with db.transaction() as session:
         jurisdiction = session.query(Jurisdiction).filter_by(id=jurisdiction_id)[0]
         response = jurisdiction.__attributes__()
+
+    return response
+
+
+@hug.put('/provision_control_group/', version=1)
+def provision_control_group(jurisdiction_id: hug.types.number):
+
+    with db.transaction() as session:
+        cg = get_objects(Jurisdiction, jurisdiction_id, session)[0]
+
+        if cg.jurisdiction_type.name != 'control_group':
+            msg = 'Jurisdiction with id {} is not a control group'.format(jurisdiction_id)
+            raise falcon.HTTPBadRequest('Bad request', msg)
+
+        if cg.configuration['platform'] == 'amazon_web_services':
+            platform = AWS(cg)
+            assets = platform.provision_control_group()
+        else:
+            msg = 'Platform {} not supported'.format(cg.configuration['platform'])
+            raise falcon.HTTPBadRequest('Bad request', msg)
+
+        cg.active = True
+        cg.assets = assets
+
+        response = cg.__attributes__()
+
+    return response
+
+
+@hug.put('/decommission_control_group/', version=1)
+def decommission_control_group(jurisdiction_id: hug.types.number):
+
+    with db.transaction() as session:
+        cg = get_objects(Jurisdiction, jurisdiction_id, session)[0]
+
+        if cg.active == False:
+            msg = 'Control group with id {} not active'.format(jurisdiction_id)
+            raise falcon.HTTPBadRequest('Bad request', msg)
+
+        for child in cg.children:
+            if child.active == True:
+                msg = 'Child jurisdiction with id {} is still active'.format(child.id)
+                raise falcon.HTTPBadRequest('Bad request', msg)
+
+        if cg.configuration['platform'] == 'amazon_web_services':
+            platform = AWS(cg)
+            assets = platform.decommission_control_group()
+        else:
+            msg = 'Platform {} not supported'.format(cg.platform)
+            raise falcon.HTTPBadRequest('Bad request', msg)
+
+        cg.active = False
+        cg.assets = assets
+
+        response = cg.__attributes__()
 
     return response
 

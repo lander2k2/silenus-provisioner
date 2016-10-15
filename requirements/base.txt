@@ -1,7 +1,14 @@
+boto3==1.4.1
+botocore==1.4.62
+docutils==0.12
 falcon==1.0.0
 hug==2.1.2
+jmespath==0.9.0
 psycopg2==2.6.2
+python-dateutil==2.5.3
 python-mimeparse==1.5.3
 requests==2.11.1
+s3transfer==0.1.8
 six==1.10.0
 SQLAlchemy==1.0.15
+troposphere==1.8.2

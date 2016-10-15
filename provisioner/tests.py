@@ -3,6 +3,7 @@ import os
 import unittest
 from subprocess import call
 
+import boto3
 import falcon
 
 import defaults
@@ -142,6 +143,48 @@ class TestProvisioner(unittest.TestCase):
                                       **{'name': test_j['name']})
             j['created_on'] = None
             self.assertDictEqual(test_j, j)
+
+        # provision control group on wrong jurisdiction type
+        self.assertRaises(falcon.errors.HTTPBadRequest,
+                          api.provision_control_group,
+                          jurisdiction_id=2)
+
+        # succuessful provision
+        prov_cg = api.provision_control_group(jurisdiction_id=1)
+        self.assertTrue(prov_cg['active'])
+        bucket_name = prov_cg['assets']['s3_bucket']
+        s3_client = boto3.client('s3', region_name=prov_cg['configuration']['region'])
+        buckets = s3_client.list_buckets()
+        bucket_names = []
+        for b in buckets['Buckets']:
+            bucket_names.append(b['Name'])
+        self.assertIn(bucket_name, bucket_names)
+
+        # successful decommission
+        decom_cg = api.decommission_control_group(jurisdiction_id=1)
+        self.assertFalse(decom_cg['active'])
+        s3_client = boto3.client('s3', region_name=prov_cg['configuration']['region'])
+        buckets = s3_client.list_buckets()
+        bucket_names = []
+        for b in buckets['Buckets']:
+            bucket_names.append(b['Name'])
+        self.assertNotIn(bucket_name, bucket_names)
+
+        # decommision inactive control group
+        self.assertRaises(falcon.errors.HTTPBadRequest,
+                          api.decommission_control_group,
+                          jurisdiction_id=1)
+
+        # provision congrol group on unsupported platform
+        bad_config = prov_defaults['configuration_templates'][0]['configuration']
+        bad_config['platform'] = 'bare_metal'
+        api.edit_jurisdiction(jurisdiction_id=1, **{'configuration': bad_config})
+        self.assertRaises(falcon.errors.HTTPBadRequest,
+                          api.provision_control_group,
+                          jurisdiction_id=1)
+
+        ## TODO: check raises error when trying to decommision control group
+        #        that has acitve child jurisdiction.
 
 
 if __name__ == '__main__':
