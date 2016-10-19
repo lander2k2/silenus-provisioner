@@ -18,7 +18,7 @@ PROVISIONER_DEFAULTS = {
     ],
     'configuration_templates': [
         {'id': 1,
-         'name': 'alpha',
+         'name': 'default_control_group',
          'configuration': {'control_cluster': False,  # if True provision control VPC and server
                            'primary_cluster_cidr': '10.0.0.0/8',
                            'support_cluster_cidr': '172.16.0.0/12',
@@ -29,25 +29,26 @@ PROVISIONER_DEFAULTS = {
          'default': True,
          'jurisdiction_type_id': 1},
         {'id': 2,
-         'name': 'alpha_dev',
+         'name': 'default_dev_tier',
          'configuration': {'support_cluster': False,  # if True create support VPC
-                           'primary_cluster_cidr': '10.0.0.0/11',  # 8 tiers/cg, 2,097,153 IPs
-                           'support_cluster_cidr': '172.16.0.0/15',  # 8 tiers/cg, 131,072 IPs
+                           'primary_cluster_cidr': '10.0.0.0/16',
+                           'support_cluster_cidr': '172.16.0.0/16',
                            'dedicated_etcd': False,
                            'controllers': 1,
                            'initial_workers': 2},
          'default': True,
          'jurisdiction_type_id': 2},
         {'id': 3,
-         'name': 'alpha_dev_01',
-         'configuration': {'host_cidr': '10.0.0.0/16',     #######################
-                           'pod_cidr': '10.1.0.0/16',      # ~10 clusters per tier
-                           'service_cidr': '10.2.0.0/24',  #######################
-                           'host_subnet_cidrs': ['10.0.0.0/19', '10.0.32.0/19'],  # 8192 IPs per subnet
+         'name': 'default_dev_01_cluster',
+         'configuration': {'host_cidr': '10.0.0.0/20',
+                           'host_subnet_cidrs': ['10.0.0.0/22', '10.0.4.0/22',
+                                                 '10.0.8.0/22', '10.0.12.0/22'],
+                           'pod_cidr': '10.0.16.0/20',
+                           'service_cidr': '10.0.32.0/24',
                            'controller_ips': ['10.0.0.50'],
                            'etcd_ips': ['10.0.0.50'],
-                           'kubernetes_api_ip': '10.2.0.1',
-                           'cluster_dns_ip': '10.2.0.10'},
+                           'kubernetes_api_ip': '10.0.32.1',
+                           'cluster_dns_ip': '10.0.32.10'},
          'default': True,
          'jurisdiction_type_id': 3}
     ]

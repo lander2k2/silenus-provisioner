@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import os
+import time
 import unittest
 from subprocess import call
 
@@ -144,13 +145,13 @@ class TestProvisioner(unittest.TestCase):
             j['created_on'] = None
             self.assertDictEqual(test_j, j)
 
-        # provision control group on wrong jurisdiction type
+        # provision tier without control group
         self.assertRaises(falcon.errors.HTTPBadRequest,
-                          api.provision_control_group,
+                          api.provision_jurisdiction,
                           jurisdiction_id=2)
 
-        # succuessful provision
-        prov_cg = api.provision_control_group(jurisdiction_id=1)
+        # succuessful control group provision
+        prov_cg = api.provision_jurisdiction(jurisdiction_id=1)
         self.assertTrue(prov_cg['active'])
         bucket_name = prov_cg['assets']['s3_bucket']
         s3_client = boto3.client('s3', region_name=prov_cg['configuration']['region'])
@@ -160,8 +161,53 @@ class TestProvisioner(unittest.TestCase):
             bucket_names.append(b['Name'])
         self.assertIn(bucket_name, bucket_names)
 
-        # successful decommission
-        decom_cg = api.decommission_control_group(jurisdiction_id=1)
+        # successful tier provision
+        prov_tier = api.provision_jurisdiction(jurisdiction_id=2)
+        self.assertTrue(isinstance(prov_tier['assets']['cloudformation_stack'], str))
+        cf_client = boto3.client('cloudformation', region_name=prov_cg['configuration']['region'])
+        stacks = cf_client.list_stacks()
+        stack_ids = []
+        for s in stacks['StackSummaries']:
+            stack_ids.append(s['StackId'])
+        self.assertIn(prov_tier['assets']['cloudformation_stack'], stack_ids)
+
+        # activate tier
+        tier_activate_attempts = 0
+        tier_active = False
+        while not tier_active:
+            t = api.activate_jurisdiction(jurisdiction_id=2)
+            if not t['active']:
+                self.assertLess(tier_activate_attempts, 30)
+                time.sleep(20)
+                tier_activate_attempts += 1
+                continue
+            else:
+                tier_active = True
+
+        # attempt to decommission control group with active tier
+        self.assertRaises(falcon.errors.HTTPBadRequest,
+                          api.decommission_jurisdiction,
+                          jurisdiction_id=1)
+
+        # successful decommisssion tier
+        decom_tier = api.decommission_jurisdiction(jurisdiction_id=2)
+        self.assertFalse(decom_tier['active'])
+        tier_delete_checks = 0
+        tier_deleted = False
+        while not tier_deleted:
+            stacks = cf_client.list_stacks()
+            for s in stacks['StackSummaries']:
+                if s['StackId'] == prov_tier['assets']['cloudformation_stack']:
+                    if not s['StackStatus'] == 'DELETE_COMPLETE':
+                        self.assertLess(tier_delete_checks, 30)
+                        time.sleep(20)
+                        tier_delete_checks += 1
+                        continue
+                    else:
+                        tier_deleted = True
+
+        # successful control group decommission
+        decom_cg = api.decommission_jurisdiction(jurisdiction_id=1)
         self.assertFalse(decom_cg['active'])
         s3_client = boto3.client('s3', region_name=prov_cg['configuration']['region'])
         buckets = s3_client.list_buckets()
@@ -170,9 +216,9 @@ class TestProvisioner(unittest.TestCase):
             bucket_names.append(b['Name'])
         self.assertNotIn(bucket_name, bucket_names)
 
-        # decommision inactive control group
+        # try to decommision inactive control group
         self.assertRaises(falcon.errors.HTTPBadRequest,
-                          api.decommission_control_group,
+                          api.decommission_jurisdiction,
                           jurisdiction_id=1)
 
         # provision congrol group on unsupported platform
@@ -180,11 +226,8 @@ class TestProvisioner(unittest.TestCase):
         bad_config['platform'] = 'bare_metal'
         api.edit_jurisdiction(jurisdiction_id=1, **{'configuration': bad_config})
         self.assertRaises(falcon.errors.HTTPBadRequest,
-                          api.provision_control_group,
+                          api.provision_jurisdiction,
                           jurisdiction_id=1)
-
-        ## TODO: check raises error when trying to decommision control group
-        #        that has acitve child jurisdiction.
 
 
 if __name__ == '__main__':

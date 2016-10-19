@@ -131,57 +131,122 @@ def edit_jurisdiction(jurisdiction_id: hug.types.number, **edits):
     return response
 
 
-@hug.put('/provision_control_group/', version=1)
-def provision_control_group(jurisdiction_id: hug.types.number):
+@hug.put('/provision_jurisdiction/', version=1)
+def provision_jurisdiction(jurisdiction_id: hug.types.number):
 
     with db.transaction() as session:
-        cg = get_objects(Jurisdiction, jurisdiction_id, session)[0]
+        j = get_objects(Jurisdiction, jurisdiction_id, session)[0]
 
-        if cg.jurisdiction_type.name != 'control_group':
-            msg = 'Jurisdiction with id {} is not a control group'.format(jurisdiction_id)
+        if j.active == True:
+            msg = 'Jurisdiction with id {} is already active'.format(jurisdiction_id)
             raise falcon.HTTPBadRequest('Bad request', msg)
 
-        if cg.configuration['platform'] == 'amazon_web_services':
-            platform = AWS(cg)
-            assets = platform.provision_control_group()
+        jurisdiction_type = j.jurisdiction_type.name
+
+        if jurisdiction_type == 'control_group':
+            if j.configuration['platform'] == 'amazon_web_services':
+                platform = AWS(j)
+                assets = platform.provision_control_group()
+                j.active = True
+            else:
+                msg = 'Platform {} not supported'.format(j.configuration['platform'])
+                raise falcon.HTTPBadRequest('Bad request', msg)
+        elif jurisdiction_type == 'tier':
+            control_group = j.parent_jurisdiction
+            if not control_group.active:
+                msg = 'Control group {} is inactive. Tier must be provisioned in active control group'.format(control_group.name)
+                raise falcon.HTTPBadRequest('Bad request', msg)
+            if control_group.configuration['platform'] == 'amazon_web_services':
+                platform = AWS(j)
+                assets = platform.provision_tier()
+            else:
+                msg = 'Platform {} not supported'.format(j.configuration['platform'])
+                raise falcon.HTTPBadRequest('Bad request', msg)
+        elif jurisdiction_type == 'cluster':
+            pass
         else:
-            msg = 'Platform {} not supported'.format(cg.configuration['platform'])
-            raise falcon.HTTPBadRequest('Bad request', msg)
+            msg = 'Jurisdiction type {} not supported'.format(jurisdiction_type)
+            raise falcon.HTTPBadRequests('Bad request', msg)
 
-        cg.active = True
-        cg.assets = assets
+        j.assets = assets
 
-        response = cg.__attributes__()
+        response = j.__attributes__()
 
     return response
 
 
-@hug.put('/decommission_control_group/', version=1)
-def decommission_control_group(jurisdiction_id: hug.types.number):
+@hug.put('/activate_jurisdiction/', version=1)
+def activate_jurisdiction(jurisdiction_id: hug.types.number):
 
     with db.transaction() as session:
-        cg = get_objects(Jurisdiction, jurisdiction_id, session)[0]
+        j = get_objects(Jurisdiction, jurisdiction_id, session)[0]
 
-        if cg.active == False:
-            msg = 'Control group with id {} not active'.format(jurisdiction_id)
-            raise falcon.HTTPBadRequest('Bad request', msg)
+        jurisdiction_type = j.jurisdiction_type.name
 
-        for child in cg.children:
-            if child.active == True:
-                msg = 'Child jurisdiction with id {} is still active'.format(child.id)
+        if jurisdiction_type == 'control_group':
+            # no need to activate control group
+            pass
+        elif jurisdiction_type == 'tier':
+            control_group = j.parent_jurisdiction
+            if control_group.configuration['platform'] == 'amazon_web_services':
+                platform = AWS(j)
+                j.active = platform.activate_tier()
+            else:
+                msg = 'Platform {} not supported'.format(j.configuration['platform'])
                 raise falcon.HTTPBadRequest('Bad request', msg)
-
-        if cg.configuration['platform'] == 'amazon_web_services':
-            platform = AWS(cg)
-            assets = platform.decommission_control_group()
+        elif jurisdiction_type == 'cluster':
+            pass
         else:
-            msg = 'Platform {} not supported'.format(cg.platform)
+            msg = 'Jurisdiction type {} not supported'.format(jurisdiction_type)
+            raise falcon.HTTPBadRequests('Bad request', msg)
+
+        response = j.__attributes__()
+
+    return response
+
+
+@hug.put('/decommission_jurisdiction/', version=1)
+def decommission_jurisdiction(jurisdiction_id: hug.types.number):
+
+    with db.transaction() as session:
+        j = get_objects(Jurisdiction, jurisdiction_id, session)[0]
+
+        if j.active == False:
+            msg = 'Jurisdiction with id {} not active'.format(jurisdiction_id)
             raise falcon.HTTPBadRequest('Bad request', msg)
 
-        cg.active = False
-        cg.assets = assets
+        jurisdiction_type = j.jurisdiction_type.name
 
-        response = cg.__attributes__()
+        if jurisdiction_type == 'control_group':
+            for child in j.children:
+                if child.active == True:
+                    msg = 'Child jurisdiction with id {} is still active'.format(child.id)
+                    raise falcon.HTTPBadRequest('Bad request', msg)
+
+            if j.configuration['platform'] == 'amazon_web_services':
+                platform = AWS(j)
+                assets = platform.decommission_control_group()
+            else:
+                msg = 'Platform {} not supported'.format(j.platform)
+                raise falcon.HTTPBadRequest('Bad request', msg)
+        elif jurisdiction_type == 'tier':
+            control_group = j.parent_jurisdiction
+            if control_group.configuration['platform'] == 'amazon_web_services':
+                platform = AWS(j)
+                assets = platform.decommission_tier()
+            else:
+                msg = 'Platform {} not supported'.format(j.platform)
+                raise falcon.HTTPBadRequest('Bad request', msg)
+        elif jurisdiction_type == 'cluster':
+            pass
+        else:
+            msg = 'Jurisdiction type {} not supported'.format(jurisdiction_type)
+            raise falcon.HTTPBadRequests('Bad request', msg)
+
+        j.active = False
+        j.assets = assets
+
+        response = j.__attributes__()
 
     return response
 
