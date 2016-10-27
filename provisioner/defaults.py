@@ -1,4 +1,4 @@
-from models import JurisdictionType, ConfigurationTemplate
+from provisioner.models import JurisdictionType, ConfigurationTemplate
 
 
 PROVISIONER_DEFAULTS = {

@@ -1,5 +1,5 @@
 import os
-from database import Database
+from provisioner.database import Database
 
 db = Database(os.environ.get('SILENUS_PROVISIONER_DB_HOST'),
               os.environ.get('SILENUS_PROVISIONER_DB_NAME'),

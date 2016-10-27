@@ -88,7 +88,7 @@ class Jurisdiction(Base):
     jurisdiction_type = relationship('JurisdictionType', backref='jurisdictions',
                                      foreign_keys=jurisdiction_type_id)
     children          = relationship('Jurisdiction',
-                                     backref=backref('parent_jurisdiction', remote_side=[id]))
+                                     backref=backref('parent', remote_side=[id]))
 
     def __attributes__(self):
         return {

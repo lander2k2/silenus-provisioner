@@ -2,25 +2,47 @@
 import os
 import time
 import unittest
-from subprocess import call
+from subprocess import call, check_output, CalledProcessError
 
 import boto3
 import falcon
-
-import defaults
-from defaults import PROVISIONER_DEFAULTS as prov_defaults
 
 
 class TestProvisioner(unittest.TestCase):
 
     def setUp(self):
-        os.environ['SILENUS_PROVISIONER_DB_NAME'] = 'test_silenus_provisioner'
-        api.db.create()
-        defaults.load_defaults(api.db)
+        try:
+            output = check_output(['supervisorctl', '-c', '../supervisord.conf',
+                                   'status', 'provisioner:worker'])
+            status = output.decode('utf-8')
+        except CalledProcessError as e:
+            status = str(e.stdout)
+
+        if 'RUNNING' in status:
+            self.worker_running = True
+            call(['supervisorctl', '-c', '../supervisord.conf',
+                  'stop', 'provisioner:worker'])
+        else:
+            self.worker_running = False
+
+        call(['supervisorctl', '-c', '../supervisord.conf',
+              'start', 'test_worker'])
+
+        os.environ['SILENUS_PROVISIONER_DB_NAME'] = os.environ.get('SILENUS_PROVISIONER_TEST_DB_NAME')
+        db.create()
+        defaults.load_defaults(db)
 
     def tearDown(self):
-        api.db.engine.dispose()
+        call(['supervisorctl', '-c', '../supervisord.conf',
+              'stop', 'test_worker'])
+
+        if self.worker_running:
+            call(['supervisorctl', '-c', '../supervisord.conf',
+                  'start', 'provisioner:worker'])
+
+        db.engine.dispose()
         call(['dropdb', os.environ.get('SILENUS_PROVISIONER_DB_NAME')])
+
         os.environ['SILENUS_PROVISIONER_DB_NAME'] = existing_db_name
 
     def test_jurisdiction_types(self):
@@ -163,23 +185,23 @@ class TestProvisioner(unittest.TestCase):
 
         # successful tier provision
         prov_tier = api.provision_jurisdiction(jurisdiction_id=2)
-        self.assertTrue(isinstance(prov_tier['assets']['cloudformation_stack'], str))
+        self.assertTrue(isinstance(prov_tier['assets']['cloudformation_stack']['stack_id'], str))
         cf_client = boto3.client('cloudformation', region_name=prov_cg['configuration']['region'])
         stacks = cf_client.list_stacks()
         stack_ids = []
         for s in stacks['StackSummaries']:
             stack_ids.append(s['StackId'])
-        self.assertIn(prov_tier['assets']['cloudformation_stack'], stack_ids)
+        self.assertIn(prov_tier['assets']['cloudformation_stack']['stack_id'], stack_ids)
 
-        # activate tier
-        tier_activate_attempts = 0
+        # ensure tier activates
+        tier_check_attempts = 0
         tier_active = False
         while not tier_active:
-            t = api.activate_jurisdiction(jurisdiction_id=2)
-            if not t['active']:
-                self.assertLess(tier_activate_attempts, 30)
+            t = api.get_jurisdictions(jurisdiction_id=2)
+            if not t[0]['active']:
+                self.assertLess(tier_check_attempts, 30)
                 time.sleep(20)
-                tier_activate_attempts += 1
+                tier_check_attempts += 1
                 continue
             else:
                 tier_active = True
@@ -197,7 +219,7 @@ class TestProvisioner(unittest.TestCase):
         while not tier_deleted:
             stacks = cf_client.list_stacks()
             for s in stacks['StackSummaries']:
-                if s['StackId'] == prov_tier['assets']['cloudformation_stack']:
+                if s['StackId'] == prov_tier['assets']['cloudformation_stack']['stack_id']:
                     if not s['StackStatus'] == 'DELETE_COMPLETE':
                         self.assertLess(tier_delete_checks, 30)
                         time.sleep(20)
@@ -221,7 +243,7 @@ class TestProvisioner(unittest.TestCase):
                           api.decommission_jurisdiction,
                           jurisdiction_id=1)
 
-        # provision congrol group on unsupported platform
+        # provision control group on unsupported platform
         bad_config = prov_defaults['configuration_templates'][0]['configuration']
         bad_config['platform'] = 'bare_metal'
         api.edit_jurisdiction(jurisdiction_id=1, **{'configuration': bad_config})
@@ -231,8 +253,12 @@ class TestProvisioner(unittest.TestCase):
 
 
 if __name__ == '__main__':
+    call(['pip3', 'install', '-r', '../requirements/base.txt'])
     existing_db_name = os.environ.get('SILENUS_PROVISIONER_DB_NAME')
-    os.environ['SILENUS_PROVISIONER_DB_NAME'] = 'test_silenus_provisioner'
-    import api  # importing here where the test databse name env var set
+    os.environ['SILENUS_PROVISIONER_DB_NAME'] = os.environ.get('SILENUS_PROVISIONER_TEST_DB_NAME')
+    from provisioner import api
+    from provisioner import db
+    from provisioner import defaults
+    from provisioner.defaults import PROVISIONER_DEFAULTS as prov_defaults
     unittest.main()
 

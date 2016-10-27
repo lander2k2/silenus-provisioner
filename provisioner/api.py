@@ -3,17 +3,21 @@ import os
 import falcon
 import hug
 import sqlalchemy
+from sqlalchemy.orm.exc import NoResultFound
 
 from provisioner import db
-from models import JurisdictionType, Jurisdiction, ConfigurationTemplate
-from platforms import AWS
+from provisioner.database import Database
+from provisioner.models import JurisdictionType, Jurisdiction, ConfigurationTemplate
+from provisioner.platforms import AWS
+from provisioner.tasks import monitor_cloudformation_stack
 
 
 def get_objects(obj, obj_id, session):
 
     if obj_id:
-        query = session.query(obj).filter_by(id=obj_id)
-        if query.count() == 0:
+        try:
+            query = session.query(obj).filter_by(id=obj_id).one()
+        except NoResultFound:
             msg = "{0} with id {1} does not exist".format(obj.__name__, obj_id)
             raise falcon.HTTPBadRequest('Bad request', msg)
     else:
@@ -24,7 +28,10 @@ def get_objects(obj, obj_id, session):
 
 def get_object_attributes(obj, obj_id, session):
 
-    objects = get_objects(obj, obj_id, session)
+    if obj_id:
+        objects = [get_objects(obj, obj_id, session)]
+    else:
+        objects = get_objects(obj, obj_id, session)
 
     object_attributes = []
     for o in objects:
@@ -81,10 +88,10 @@ def create_jurisdiction(jurisdiction_name: hug.types.text,
 
         jurisdiction_type = get_objects(JurisdictionType,
                                         jurisdiction_type_id,
-                                        session)[0]
+                                        session)
         configuration_template = get_objects(ConfigurationTemplate,
                                              configuration_template_id,
-                                             session)[0]
+                                             session)
         if configuration_template.jurisdiction_type_id != jurisdiction_type.id:
             msg = """
                 ConfigurationTemplate with id {0} is not a template for
@@ -92,7 +99,7 @@ def create_jurisdiction(jurisdiction_name: hug.types.text,
             """.format(configuration_template_id, jurisdiction_type.name)
             raise falcon.HTTPBadRequest('Bad request', ' '.join(msg.split()))
         if parent_id:
-            parent = get_objects(Jurisdiction, parent_id, session)[0]
+            parent = get_objects(Jurisdiction, parent_id, session)
 
         new_jurisdiction = Jurisdiction(name=jurisdiction_name,
                                         jurisdiction_type_id=jurisdiction_type.id,
@@ -115,7 +122,7 @@ def edit_jurisdiction(jurisdiction_id: hug.types.number, **edits):
         edits['jurisdiction_metadata'] = edits.pop('metadata')
 
     with db.transaction() as session:
-        jurisdiction = get_objects(Jurisdiction, jurisdiction_id, session)[0]
+        jurisdiction = get_objects(Jurisdiction, jurisdiction_id, session)
 
         for attr in edits:
             if attr in ('name', 'jurisdiction_metadata', 'configuration'):
@@ -135,7 +142,7 @@ def edit_jurisdiction(jurisdiction_id: hug.types.number, **edits):
 def provision_jurisdiction(jurisdiction_id: hug.types.number):
 
     with db.transaction() as session:
-        j = get_objects(Jurisdiction, jurisdiction_id, session)[0]
+        j = get_objects(Jurisdiction, jurisdiction_id, session)
 
         if j.active == True:
             msg = 'Jurisdiction with id {} is already active'.format(jurisdiction_id)
@@ -152,18 +159,30 @@ def provision_jurisdiction(jurisdiction_id: hug.types.number):
                 msg = 'Platform {} not supported'.format(j.configuration['platform'])
                 raise falcon.HTTPBadRequest('Bad request', msg)
         elif jurisdiction_type == 'tier':
-            control_group = j.parent_jurisdiction
+            control_group = j.parent
             if not control_group.active:
                 msg = 'Control group {} is inactive. Tier must be provisioned in active control group'.format(control_group.name)
                 raise falcon.HTTPBadRequest('Bad request', msg)
             if control_group.configuration['platform'] == 'amazon_web_services':
                 platform = AWS(j)
                 assets = platform.provision_tier()
+                monitor_cloudformation_stack.delay(
+                        j.id, assets['cloudformation_stack']['stack_id'])
             else:
                 msg = 'Platform {} not supported'.format(j.configuration['platform'])
                 raise falcon.HTTPBadRequest('Bad request', msg)
         elif jurisdiction_type == 'cluster':
-            pass
+            tier = j.parent
+            control_group = j.parent.parent
+            if not tier.active:
+                msg = 'Tier {} is inactive. Tier must be provisioned in active control group'.format(tier.name)
+                raise falcon.HTTPBadRequest('Bad request', msg)
+            if control_group.configuration['platform'] == 'amazon_web_services':
+                platform = AWS(j)
+                assets = platform.provision_cluster()
+            else:
+                msg = 'Platform {} not supported'.format(j.configuration['platform'])
+                raise falcon.HTTPBadRequest('Bad request', msg)
         else:
             msg = 'Jurisdiction type {} not supported'.format(jurisdiction_type)
             raise falcon.HTTPBadRequests('Bad request', msg)
@@ -175,41 +194,11 @@ def provision_jurisdiction(jurisdiction_id: hug.types.number):
     return response
 
 
-@hug.put('/activate_jurisdiction/', version=1)
-def activate_jurisdiction(jurisdiction_id: hug.types.number):
-
-    with db.transaction() as session:
-        j = get_objects(Jurisdiction, jurisdiction_id, session)[0]
-
-        jurisdiction_type = j.jurisdiction_type.name
-
-        if jurisdiction_type == 'control_group':
-            # no need to activate control group
-            pass
-        elif jurisdiction_type == 'tier':
-            control_group = j.parent_jurisdiction
-            if control_group.configuration['platform'] == 'amazon_web_services':
-                platform = AWS(j)
-                j.active = platform.activate_tier()
-            else:
-                msg = 'Platform {} not supported'.format(j.configuration['platform'])
-                raise falcon.HTTPBadRequest('Bad request', msg)
-        elif jurisdiction_type == 'cluster':
-            pass
-        else:
-            msg = 'Jurisdiction type {} not supported'.format(jurisdiction_type)
-            raise falcon.HTTPBadRequests('Bad request', msg)
-
-        response = j.__attributes__()
-
-    return response
-
-
 @hug.put('/decommission_jurisdiction/', version=1)
 def decommission_jurisdiction(jurisdiction_id: hug.types.number):
 
     with db.transaction() as session:
-        j = get_objects(Jurisdiction, jurisdiction_id, session)[0]
+        j = get_objects(Jurisdiction, jurisdiction_id, session)
 
         if j.active == False:
             msg = 'Jurisdiction with id {} not active'.format(jurisdiction_id)
@@ -230,7 +219,7 @@ def decommission_jurisdiction(jurisdiction_id: hug.types.number):
                 msg = 'Platform {} not supported'.format(j.platform)
                 raise falcon.HTTPBadRequest('Bad request', msg)
         elif jurisdiction_type == 'tier':
-            control_group = j.parent_jurisdiction
+            control_group = j.parent
             if control_group.configuration['platform'] == 'amazon_web_services':
                 platform = AWS(j)
                 assets = platform.decommission_tier()

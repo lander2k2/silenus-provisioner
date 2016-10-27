@@ -5,8 +5,8 @@ from subprocess import call
 
 import sqlalchemy
 
-import defaults
-import models
+from provisioner import defaults
+from provisioner import models
 
 
 class Database(object):
