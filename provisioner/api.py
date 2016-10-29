@@ -154,7 +154,7 @@ def provision_jurisdiction(jurisdiction_id: hug.types.number):
             if j.configuration['platform'] == 'amazon_web_services':
                 platform = AWS(j)
                 assets = platform.provision_control_group()
-                j.active = True
+                monitor_cloudformation_stack.delay(j.id)
             else:
                 msg = 'Platform {} not supported'.format(j.configuration['platform'])
                 raise falcon.HTTPBadRequest('Bad request', msg)
@@ -166,8 +166,7 @@ def provision_jurisdiction(jurisdiction_id: hug.types.number):
             if control_group.configuration['platform'] == 'amazon_web_services':
                 platform = AWS(j)
                 assets = platform.provision_tier()
-                monitor_cloudformation_stack.delay(
-                        j.id, assets['cloudformation_stack']['stack_id'])
+                monitor_cloudformation_stack.delay(j.id)
             else:
                 msg = 'Platform {} not supported'.format(j.configuration['platform'])
                 raise falcon.HTTPBadRequest('Bad request', msg)
@@ -214,7 +213,7 @@ def decommission_jurisdiction(jurisdiction_id: hug.types.number):
 
             if j.configuration['platform'] == 'amazon_web_services':
                 platform = AWS(j)
-                assets = platform.decommission_control_group()
+                assets = platform.decommission_jurisdiction()
             else:
                 msg = 'Platform {} not supported'.format(j.platform)
                 raise falcon.HTTPBadRequest('Bad request', msg)
@@ -222,12 +221,18 @@ def decommission_jurisdiction(jurisdiction_id: hug.types.number):
             control_group = j.parent
             if control_group.configuration['platform'] == 'amazon_web_services':
                 platform = AWS(j)
-                assets = platform.decommission_tier()
+                assets = platform.decommission_jurisdiction()
             else:
                 msg = 'Platform {} not supported'.format(j.platform)
                 raise falcon.HTTPBadRequest('Bad request', msg)
         elif jurisdiction_type == 'cluster':
-            pass
+            control_group = j.parent.parent
+            if control_group.configuration['platform'] == 'amazon_web_services':
+                platform = AWS(j)
+                assets = platform.decommission_jurisdiction()
+            else:
+                msg = 'Platform {} not supported'.format(j.platform)
+                raise falcon.HTTPBadRequest('Bad request', msg)
         else:
             msg = 'Jurisdiction type {} not supported'.format(jurisdiction_type)
             raise falcon.HTTPBadRequests('Bad request', msg)
