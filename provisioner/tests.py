@@ -111,6 +111,21 @@ class TestProvisioner(unittest.TestCase):
         }
         test_jurisdictions = [test_cg, test_tier, test_cluster]
 
+        def jurisdiction_active(jurisdiction_id):
+            check_attempts = 0
+            active = False
+            while not active:
+                j = api.get_jurisdictions(jurisdiction_id=jurisdiction_id)
+                if not j[0]['active']:
+                    if check_attempts < 30:
+                        time.sleep(20)
+                        check_attempts += 1
+                        continue
+                    else:
+                        return False
+                else:
+                    return True
+
         # create control group
         create_cg_resp = api.create_jurisdiction(
                                 jurisdiction_name=test_cg['name'],
@@ -174,19 +189,20 @@ class TestProvisioner(unittest.TestCase):
 
         # succuessful control group provision
         prov_cg = api.provision_jurisdiction(jurisdiction_id=1)
-        self.assertTrue(prov_cg['active'])
-        bucket_name = prov_cg['assets']['s3_bucket']
-        s3_client = boto3.client('s3', region_name=prov_cg['configuration']['region'])
-        buckets = s3_client.list_buckets()
-        bucket_names = []
-        for b in buckets['Buckets']:
-            bucket_names.append(b['Name'])
-        self.assertIn(bucket_name, bucket_names)
+        cf_client = boto3.client('cloudformation', region_name=prov_cg['configuration']['region'])
+        self.assertTrue(isinstance(prov_cg['assets']['cloudformation_stack']['stack_id'], str))
+        stacks = cf_client.list_stacks()
+        stack_ids = []
+        for s in stacks['StackSummaries']:
+            stack_ids.append(s['StackId'])
+        self.assertIn(prov_cg['assets']['cloudformation_stack']['stack_id'], stack_ids)
+
+        # ensure control group activates
+        self.assertTrue(jurisdiction_active(prov_cg['id']))
 
         # successful tier provision
         prov_tier = api.provision_jurisdiction(jurisdiction_id=2)
         self.assertTrue(isinstance(prov_tier['assets']['cloudformation_stack']['stack_id'], str))
-        cf_client = boto3.client('cloudformation', region_name=prov_cg['configuration']['region'])
         stacks = cf_client.list_stacks()
         stack_ids = []
         for s in stacks['StackSummaries']:
@@ -194,17 +210,7 @@ class TestProvisioner(unittest.TestCase):
         self.assertIn(prov_tier['assets']['cloudformation_stack']['stack_id'], stack_ids)
 
         # ensure tier activates
-        tier_check_attempts = 0
-        tier_active = False
-        while not tier_active:
-            t = api.get_jurisdictions(jurisdiction_id=2)
-            if not t[0]['active']:
-                self.assertLess(tier_check_attempts, 30)
-                time.sleep(20)
-                tier_check_attempts += 1
-                continue
-            else:
-                tier_active = True
+        self.assertTrue(jurisdiction_active(prov_tier['id']))
 
         # attempt to decommission control group with active tier
         self.assertRaises(falcon.errors.HTTPBadRequest,
@@ -231,12 +237,6 @@ class TestProvisioner(unittest.TestCase):
         # successful control group decommission
         decom_cg = api.decommission_jurisdiction(jurisdiction_id=1)
         self.assertFalse(decom_cg['active'])
-        s3_client = boto3.client('s3', region_name=prov_cg['configuration']['region'])
-        buckets = s3_client.list_buckets()
-        bucket_names = []
-        for b in buckets['Buckets']:
-            bucket_names.append(b['Name'])
-        self.assertNotIn(bucket_name, bucket_names)
 
         # try to decommision inactive control group
         self.assertRaises(falcon.errors.HTTPBadRequest,
@@ -253,7 +253,6 @@ class TestProvisioner(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    call(['pip3', 'install', '-r', '../requirements/base.txt'])
     existing_db_name = os.environ.get('SILENUS_PROVISIONER_DB_NAME')
     os.environ['SILENUS_PROVISIONER_DB_NAME'] = os.environ.get('SILENUS_PROVISIONER_TEST_DB_NAME')
     from provisioner import api
