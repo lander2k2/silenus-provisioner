@@ -212,12 +212,46 @@ class TestProvisioner(unittest.TestCase):
         # ensure tier activates
         self.assertTrue(jurisdiction_active(prov_tier['id']))
 
+        # successful cluster provision
+        prov_cluster = api.provision_jurisdiction(jurisdiction_id=3)
+        self.assertTrue(isinstance(prov_cluster['assets']['cloudformation_stack']['stack_id'], str))
+        stacks = cf_client.list_stacks()
+        stack_ids = []
+        for s in stacks['StackSummaries']:
+            stack_ids.append(s['StackId'])
+        self.assertIn(prov_cluster['assets']['cloudformation_stack']['stack_id'], stack_ids)
+
+        # ensure cluster activates
+        self.assertTrue(jurisdiction_active(prov_cluster['id']))
+
+        # attempt to decommission tier with active cluster
+        self.assertRaises(falcon.errors.HTTPBadRequest,
+                          api.decommission_jurisdiction,
+                          jurisdiction_id=2)
+
         # attempt to decommission control group with active tier
         self.assertRaises(falcon.errors.HTTPBadRequest,
                           api.decommission_jurisdiction,
                           jurisdiction_id=1)
 
-        # successful decommisssion tier
+        # successful cluster decommission
+        decom_cluster = api.decommission_jurisdiction(jurisdiction_id=3)
+        self.assertFalse(decom_cluster['active'])
+        cluster_delete_checks = 0
+        cluster_deleted = False
+        while not cluster_deleted:
+            stacks = cf_client.list_stacks()
+            for s in stacks['StackSummaries']:
+                if s['StackId'] == prov_cluster['assets']['cloudformation_stack']['stack_id']:
+                    if not s['StackStatus'] == 'DELETE_COMPLETE':
+                        self.assertLess(cluster_delete_checks, 30)
+                        time.sleep(20)
+                        cluster_delete_checks += 1
+                        continue
+                    else:
+                        cluster_deleted = True
+
+        # successful tier decommisssion
         decom_tier = api.decommission_jurisdiction(jurisdiction_id=2)
         self.assertFalse(decom_tier['active'])
         tier_delete_checks = 0
@@ -239,6 +273,16 @@ class TestProvisioner(unittest.TestCase):
         self.assertFalse(decom_cg['active'])
 
         # try to decommision inactive control group
+        self.assertRaises(falcon.errors.HTTPBadRequest,
+                          api.decommission_jurisdiction,
+                          jurisdiction_id=1)
+
+        # try to decommission inactive tier
+        self.assertRaises(falcon.errors.HTTPBadRequest,
+                          api.decommission_jurisdiction,
+                          jurisdiction_id=2)
+
+        # try to decommission inactive cluster
         self.assertRaises(falcon.errors.HTTPBadRequest,
                           api.decommission_jurisdiction,
                           jurisdiction_id=1)

@@ -3,7 +3,7 @@ import random
 import string
 
 import boto3
-from troposphere import Template, Ref, Tags, ec2, s3
+from troposphere import Template, Ref, Tags, ec2, s3, elasticloadbalancing
 
 from provisioner.tasks import monitor_cloudformation_stack, monitor_cluster_network
 
@@ -117,17 +117,18 @@ class AWS(object):
         ec2_client = boto3.client('ec2', region_name=self.region)
 
         # tier vpc
-        tier_vpcs = ec2_client.describe_vpcs(
-                            Filters=[
-                                {
-                                    'Name': 'tag:tier',
-                                    'Values': [self.jurisdiction.parent.name]
-                                }
-                            ])
+        vpc_filter = {
+                'Name': 'tag:tier',
+                'Values': [self.jurisdiction.parent.name]
+            }
+        tier_vpcs = ec2_client.describe_vpcs(Filters=[vpc_filter])
 
         for vpc in tier_vpcs['Vpcs']:
             if vpc['CidrBlock'] == self.jurisdiction.parent.configuration['primary_cluster_cidr']:
                 vpc_id = vpc['VpcId']
+
+        vpc_rt = ec2_client.describe_route_tables(Filters=[vpc_filter])
+        rt_id = vpc_rt['RouteTables'][0]['RouteTableId']
 
         # subnets
         azs = ec2_client.describe_availability_zones()
@@ -150,13 +151,47 @@ class AWS(object):
                       tier=self.jurisdiction.parent.name,
                       cluster=self.jurisdiction.name)
 
-            vpc = cf_template.add_resource(ec2.Subnet(
+            subnet = cf_template.add_resource(ec2.Subnet(
                 'Subnet{}'.format(subnet_counter),
                 AvailabilityZone=assign[1],
                 CidrBlock=assign[0],
                 MapPublicIpOnLaunch=True,
                 VpcId=vpc_id,
                 Tags=tags))
+
+            subnet_rt_assoc = cf_template.add_resource(ec2.SubnetRouteTableAssociation(
+                'Subnet{}RouteTableAssociation'.format(subnet_counter),
+                RouteTableId=rt_id,
+                SubnetId=Ref(subnet)))
+
+            if subnet_counter == 0:
+                controller_listener = elasticloadbalancing.Listener(
+                        LoadBalancerPort=443,
+                        InstancePort=443,
+                        Protocol='TCP')
+                controller_elb = cf_template.add_resource(elasticloadbalancing.LoadBalancer(
+                    'ControllerELB',
+                    Listeners=[controller_listener],
+                    Subnets=[Ref(subnet)],
+                    Tags=Tags(Name='{}_controller'.format(self.jurisdiction.name),
+                              control_group=self.jurisdiction.parent.parent.name,
+                              tier=self.jurisdiction.parent.name,
+                              cluster=self.jurisdiction.name)))
+
+                if self.jurisdiction.parent.configuration['dedicated_etcd'] == True:
+                    etcd_listener = elasticloadbalancing.Listener(
+                            LoadBalancerPort=2379,
+                            InstancePort=2379,
+                            Protocol='TCP')
+                    etcd_elb = cf_template.add_resource(elasticloadbalancing.LoadBalancer(
+                        'EtcdELB',
+                        Listeners=[etcd_listener],
+                        Scheme='internal',
+                        Subnets=[Ref(subnet)],
+                        Tags=Tags(Name='{}_etcd'.format(self.jurisdiction.name),
+                                  control_group=self.jurisdiction.parent.parent.name,
+                                  tier=self.jurisdiction.parent.name,
+                                  cluster=self.jurisdiction.name)))
 
             subnet_counter +=1
 
@@ -172,11 +207,11 @@ class AWS(object):
                                          'status': None}}
 
     def provision_cluster_nodes(self):
-        pass
+        return 'testing 1 2 3'
 
     def provision_cluster(self):
         assets = self.provision_cluster_network()
-        monitor_cloudformation_stack.delay(self.jurisdiction.id)
+        monitor_cloudformation_stack.delay(self.jurisdiction.id, final=False)
         monitor_cluster_network.delay(self.jurisdiction.id)
 
         return assets

@@ -218,6 +218,10 @@ def decommission_jurisdiction(jurisdiction_id: hug.types.number):
                 msg = 'Platform {} not supported'.format(j.platform)
                 raise falcon.HTTPBadRequest('Bad request', msg)
         elif jurisdiction_type == 'tier':
+            for child in j.children:
+                if child.active == True:
+                    msg = 'Child jurisdiction with id {} is still active'.format(child.id)
+                    raise falcon.HTTPBadRequest('Bad request', msg)
             control_group = j.parent
             if control_group.configuration['platform'] == 'amazon_web_services':
                 platform = AWS(j)
