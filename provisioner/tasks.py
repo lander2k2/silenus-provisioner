@@ -13,22 +13,27 @@ from provisioner.models import Jurisdiction
 mq = Celery('tasks', broker='amqp://{0}@{1}//'.format(
                             os.environ.get('SILENUS_PROVISIONER_MQ_USER'),
                             os.environ.get('SILENUS_PROVISIONER_MQ_HOST')))
+mq.conf.update(CELERY_TASK_SERIALIZER = 'json')
+mq.conf.update(CELERY_RESULT_SERIALIZER = 'json')
 
 
 @mq.task
-def monitor_cloudformation_stack(jurisdiction_id, final=True):
+def monitor_cloudformation_stack(jurisdiction_id, interim_operation=False,
+                                 stack_key=None):
     """
     Checks on status of clouformation staxck every 30 seconds and updates status.
     When cloudformation creation or update is complete, it also updates
-    active attribute to True. If "final" argument is set to False, this indicates
-    that an interim opertaion is being monitored, and the ojbect will *not*
-    be marked as active.
+    active attribute to True. If interim_operation argument is set to True
+    the jurisdiction will *not* be marked active.
     """
     with db.transaction() as session:
         j = session.query(Jurisdiction).filter_by(id=jurisdiction_id).one()
 
         j_assets = j.assets
-        j_stack_id = j.assets['cloudformation_stack']['stack_id']
+        if stack_key:
+            j_stack_id = j.assets['cloudformation_stack'][stack_key]['stack_id']
+        else:
+            j_stack_id = j.assets['cloudformation_stack']['stack_id']
         j_type = j.jurisdiction_type.name
         if j_type == 'control_group':
             region = j.configuration['region']
@@ -49,11 +54,14 @@ def monitor_cloudformation_stack(jurisdiction_id, final=True):
             with db.transaction() as session:
                 j = session.query(Jurisdiction).filter_by(id=jurisdiction_id).one()
                 assets = j.assets
-                assets['cloudformation_stack']['status'] = latest_status
+                if stack_key:
+                    assets['cloudformation_stack'][stack_key]['status'] = latest_status
+                else:
+                    assets['cloudformation_stack']['status'] = latest_status
                 j.assets = assets
                 flag_modified(j, 'assets')
                 if latest_status in ('CREATE_COMPLETE', 'UPDATE_COMPLETE'):
-                    if final == True:
+                    if not interim_operation:
                         j.active = True
                     complete = True
                 elif latest_status[-6:] == 'FAILED':
@@ -67,7 +75,7 @@ def monitor_cloudformation_stack(jurisdiction_id, final=True):
 @mq.task
 def monitor_cluster_network(jurisdiction_id):
     """
-    Monitor the readiness of a cluter's network components during cluster
+    Monitor the readiness of a cluster's network components during cluster
     provisioning. Once cluster network componenets are ready, cluster nodes
     can be provisioned.
     """
@@ -79,20 +87,52 @@ def monitor_cluster_network(jurisdiction_id):
             j = session.query(Jurisdiction).filter_by(id=jurisdiction_id).one()
             if j.parent.parent.configuration['platform'] == 'amazon_web_services':
                 from provisioner.platforms import AWS
-                if j.assets['cloudformation_stack']['status'] == 'CREATE_COMPLETE':
+                if j.assets['cloudformation_stack']['network']['status'] == 'CREATE_COMPLETE':
                     network_ready = True
-                    ##############################
                     platform = AWS(j)
-                    test_data = platform.provision_cluster_nodes()
+                    node_assets = platform.provision_cluster_nodes()
+                    node_stack = node_assets.pop('cloudformation_stack')
                     assets = j.assets
-                    assets['test_data'] = test_data
+                    assets['cloudformation_stack'].update(node_stack)
+                    assets.update(node_assets)
                     j.assets = assets
                     flag_modified(j, 'assets')
-                    ##############################
-                    monitor_cloudformation_stack.delay(jurisdiction_id)
+                    monitor_cloudformation_stack.delay(jurisdiction_id,
+                                                       interim_operation=True,
+                                                       stack_key='nodes')
+                else:
+                    checks += 1
+                    if checks > 30:
+                        network_ready = True
 
-            else:
-                checks += 1
-                if checks > 30:
-                    network_ready = True
+
+@mq.task
+def monitor_cluster_nodes(jurisdiction_id):
+    """
+    Monitor the readiness of the cluster's nodes during cluster provisioning.
+    Once the nodes are ready, the controller/s can be attached to the load
+    balancer/s.
+    """
+    nodes_ready = False
+    checks = 0
+    while not nodes_ready:
+        time.sleep(30)
+        with db.transaction() as session:
+            j = session.query(Jurisdiction).filter_by(id=jurisdiction_id).one()
+            if j.parent.parent.configuration['platform'] == 'amazon_web_services':
+                from provisioner.platforms import AWS
+                if 'nodes' in j.assets['cloudformation_stack']:
+                    if j.assets['cloudformation_stack']['nodes']['status'] == 'CREATE_COMPLETE':
+                        nodes_ready = True
+                        platform = AWS(j)
+                        platform.register_elb_instances()
+                        j.active = True
+                    else:
+                        checks += 1
+                        if checks > 30:
+                            nodes_ready = True
+                else:
+                    checks += 1
+                    if checks > 30:
+                        nodes_ready = True
 
