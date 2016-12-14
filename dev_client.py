@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 
+import datetime
 import json
-import sys
 import requests
+import sys
+import time
 from pprint import pprint
 
 
@@ -16,6 +18,10 @@ class ApiClient(object):
 
         e = self.endpoint + uri
 
+        print('Called endpoint: {}'.format(e))
+        print('Payload sent: {}'.format(payload))
+        begin = datetime.datetime.now()
+
         if method == 'get':
             r = requests.get(e, params=payload)
         elif method == 'post':
@@ -25,14 +31,17 @@ class ApiClient(object):
         elif method == 'delete':
             r = requests.delete(e, params=payload)
 
-        print('Response Status Code:', r.status_code)
+        end = datetime.datetime.now()
+        print('Response received. Elapsed time: {}'.format(end - begin))
+        print('Response status code:', r.status_code)
         if r.status_code < 500:
+            print('Response:')
             pprint(r.json())
 
     def ping(self):
         self.call('get')
 
-    def load(self):
+    def prime(self):
         u = 'create_jurisdiction'
 
         cg_payload = {'configuration_template_id': 1,
@@ -50,7 +59,9 @@ class ApiClient(object):
                            'parent_id': 2}
 
         self.call('post', uri=u, payload=cg_payload)
+        print('############################################################')
         self.call('post', uri=u, payload=tier_payload)
+        print('############################################################')
         self.call('post', uri=u, payload=cluster_payload)
 
 
@@ -59,6 +70,7 @@ if __name__ == '__main__':
     usage = """
         Usage:
             ./dev_client.py <method> <uri> <payload>
+            ./dev_client.py prime
     """
     if len(sys.argv) == 1:
         exit(usage)
@@ -66,13 +78,16 @@ if __name__ == '__main__':
     if sys.argv[1] in ('--help', '-h', 'help'):
         exit(usage)
 
-    if len(sys.argv) != 4:
+    if sys.argv[1] == 'prime':
+        client = ApiClient()
+        client.prime()
+    elif len(sys.argv) != 4:
         exit(usage)
+    else:
+        method = sys.argv[1]
+        uri = sys.argv[2]
+        payload = sys.argv[3]
 
-    method = sys.argv[1]
-    uri = sys.argv[2]
-    payload = sys.argv[3]
-
-    c = ApiClient()
-    c.call(method, uri, json.loads(payload))
+        client = ApiClient()
+        client.call(method, uri, json.loads(payload))
 
