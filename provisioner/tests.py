@@ -111,6 +111,8 @@ class TestProvisioner(unittest.TestCase):
         }
         test_jurisdictions = [test_cg, test_tier, test_cluster]
 
+        cf_client = boto3.client('cloudformation', region_name=test_cg['configuration']['region'])
+
         def jurisdiction_active(jurisdiction_id):
             check_attempts = 0
             active = False
@@ -118,7 +120,7 @@ class TestProvisioner(unittest.TestCase):
                 j = api.get_jurisdictions(jurisdiction_id=jurisdiction_id)
                 if not j[0]['active']:
                     if check_attempts < 30:
-                        time.sleep(20)
+                        time.sleep(30)
                         check_attempts += 1
                         continue
                     else:
@@ -126,11 +128,21 @@ class TestProvisioner(unittest.TestCase):
                 else:
                     return True
 
+        def stack_id_exists(stack_id):
+            stacks = cf_client.list_stacks()
+            stack_ids = []
+            for s in stacks['StackSummaries']:
+                stack_ids.append(s['StackId'])
+            if stack_id in stack_ids:
+                return True
+            else:
+                return False
+
         # create control group
         create_cg_resp = api.create_jurisdiction(
-                                jurisdiction_name=test_cg['name'],
-                                jurisdiction_type_id=test_cg['jurisdiction_type_id'],
-                                configuration_template_id=prov_defaults['configuration_templates'][0]['id'])
+                            jurisdiction_name=test_cg['name'],
+                            jurisdiction_type_id=test_cg['jurisdiction_type_id'],
+                            configuration_template_id=prov_defaults['configuration_templates'][0]['id'])
         create_cg_resp['created_on'] = None
         self.assertDictEqual(test_cg, create_cg_resp)
 
@@ -189,37 +201,39 @@ class TestProvisioner(unittest.TestCase):
 
         # succuessful control group provision
         prov_cg = api.provision_jurisdiction(jurisdiction_id=1)
-        cf_client = boto3.client('cloudformation', region_name=prov_cg['configuration']['region'])
-        self.assertTrue(isinstance(prov_cg['assets']['cloudformation_stack']['stack_id'], str))
-        stacks = cf_client.list_stacks()
-        stack_ids = []
-        for s in stacks['StackSummaries']:
-            stack_ids.append(s['StackId'])
-        self.assertIn(prov_cg['assets']['cloudformation_stack']['stack_id'], stack_ids)
+        self.assertTrue(isinstance(
+            prov_cg['assets']['cloudformation_stack']['stack_id'],
+            str
+        ))
+        self.assertTrue(stack_id_exists(
+            prov_cg['assets']['cloudformation_stack']['stack_id']#,
+        ))
 
         # ensure control group activates
         self.assertTrue(jurisdiction_active(prov_cg['id']))
 
         # successful tier provision
         prov_tier = api.provision_jurisdiction(jurisdiction_id=2)
-        self.assertTrue(isinstance(prov_tier['assets']['cloudformation_stack']['stack_id'], str))
-        stacks = cf_client.list_stacks()
-        stack_ids = []
-        for s in stacks['StackSummaries']:
-            stack_ids.append(s['StackId'])
-        self.assertIn(prov_tier['assets']['cloudformation_stack']['stack_id'], stack_ids)
+        self.assertTrue(isinstance(
+            prov_tier['assets']['cloudformation_stack']['stack_id'],
+            str
+        ))
+        self.assertTrue(stack_id_exists(
+            prov_tier['assets']['cloudformation_stack']['stack_id']#,
+        ))
 
         # ensure tier activates
         self.assertTrue(jurisdiction_active(prov_tier['id']))
 
         # successful cluster provision
         prov_cluster = api.provision_jurisdiction(jurisdiction_id=3)
-        self.assertTrue(isinstance(prov_cluster['assets']['cloudformation_stack']['stack_id'], str))
-        stacks = cf_client.list_stacks()
-        stack_ids = []
-        for s in stacks['StackSummaries']:
-            stack_ids.append(s['StackId'])
-        self.assertIn(prov_cluster['assets']['cloudformation_stack']['stack_id'], stack_ids)
+        self.assertTrue(isinstance(
+            prov_cluster['assets']['cloudformation_stack']['network']['stack_id'],
+            str
+        ))
+        self.assertTrue(stack_id_exists(
+            prov_cluster['assets']['cloudformation_stack']['network']['stack_id']#,
+        ))
 
         # ensure cluster activates
         self.assertTrue(jurisdiction_active(prov_cluster['id']))
@@ -242,10 +256,10 @@ class TestProvisioner(unittest.TestCase):
         while not cluster_deleted:
             stacks = cf_client.list_stacks()
             for s in stacks['StackSummaries']:
-                if s['StackId'] == prov_cluster['assets']['cloudformation_stack']['stack_id']:
+                if s['StackId'] == prov_cluster['assets']['cloudformation_stack']['network']['stack_id']:
                     if not s['StackStatus'] == 'DELETE_COMPLETE':
                         self.assertLess(cluster_delete_checks, 30)
-                        time.sleep(20)
+                        time.sleep(30)
                         cluster_delete_checks += 1
                         continue
                     else:
