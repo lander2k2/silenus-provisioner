@@ -15,7 +15,7 @@ from troposphere import ec2, s3, elasticloadbalancing, autoscaling, iam, cloudwa
 
 from provisioner import db
 from provisioner.tasks import monitor_cloudformation_stack, monitor_cluster_network
-from provisioner.tasks import monitor_cluster_nodes
+from provisioner.tasks import monitor_cluster_nodes, monitor_decommission
 from provisioner.models import UserdataTemplate
 
 
@@ -1182,9 +1182,6 @@ class AWS(object):
 
         node_template_content = node_template.to_json()
 
-        with open('cf_template.json', 'w') as f:
-            f.write(node_template_content)
-
         stack_name = 'ClusterNodes{}'.format(str(self.jurisdiction.id).zfill(4))
 
         cf_client = boto3.client('cloudformation', region_name=self.region)
@@ -1291,20 +1288,9 @@ class AWS(object):
 
     def decommission_jurisdiction(self):
 
-        if self.jurisdiction.jurisdiction_type.name == 'control_group':
-            s3_client = boto3.client('s3', region_name=self.region)
-            objects = s3_client.list_objects_v2(
-                            Bucket=self.jurisdiction.assets['s3_bucket'])
-            delete = []
-            for obj in objects['Contents']:
-                delete.append({'Key': obj['Key']})
-            s3_client.delete_objects(
-                        Bucket=self.jurisdiction.assets['s3_bucket'],
-                        Delete={
-                            'Objects': delete
-                        })
+        cf_client = boto3.client('cloudformation', region_name=self.region)
 
-        elif self.jurisdiction.jurisdiction_type.name == 'cluster':
+        if self.jurisdiction.jurisdiction_type.name == 'cluster':
             ec2_client = boto3.client('ec2', region_name=self.region)
             ec2_client.delete_key_pair(
                 KeyName=self.jurisdiction.assets['ec2_key_pair'])
@@ -1315,23 +1301,30 @@ class AWS(object):
             kms_client.schedule_key_deletion(
                     KeyId=self.jurisdiction.assets['kms_key'])
 
-        cf_client = boto3.client('cloudformation', region_name=self.region)
-        cf_client.delete_stack(
-                StackName=self.jurisdiction.assets['cloudformation_stack']['nodes']['stack_id'])
-        # monitor
-        cf_client.delete_stack(
-                StackName=self.jurisdiction.assets['cloudformation_stack']['network']['stack_id'])
+            net_stack_id = self.jurisdiction.assets['cloudformation_stack']['network']['stack_id']
+            nodes_stack_id = self.jurisdiction.assets['cloudformation_stack']['nodes']['stack_id']
 
-        return {
-            'cloudformation_stack': {
-                'network': {
-                    'stack_id': None,
-                    'status': None
-                },
-                'nodes': {
-                    'stack_id': None,
-                    'status': None
-                }
-            }
-        }
+            cf_client.delete_stack(StackName=nodes_stack_id)
+
+            monitor_decommission.delay(self.jurisdiction.id,
+                                       nodes_stack_id, net_stack_id)
+
+        else:
+            if self.jurisdiction.jurisdiction_type.name == 'control_group':
+                s3_client = boto3.client('s3', region_name=self.region)
+                objects = s3_client.list_objects_v2(
+                                Bucket=self.jurisdiction.assets['s3_bucket'])
+                delete = []
+                for obj in objects['Contents']:
+                    delete.append({'Key': obj['Key']})
+                s3_client.delete_objects(
+                            Bucket=self.jurisdiction.assets['s3_bucket'],
+                            Delete={
+                                'Objects': delete
+                            })
+
+            cf_client.delete_stack(
+                StackName=self.jurisdiction.assets['cloudformation_stack']['stack_id'])
+
+        return {}
 

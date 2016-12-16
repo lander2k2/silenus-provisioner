@@ -4,16 +4,19 @@ from provisioner.models import JurisdictionType, ConfigurationTemplate, Userdata
 PROVISIONER_DEFAULTS = {
     'jurisdiction_types': [
         {
+            'id': 1,
             'name': 'control_group',
             'description': 'A control group defines a group of infrastructural resources that are usually in a particular data center or geographic zone. A control group possesses its own private newtwork space and will usually contain several tiers.',
             'parent_id': None
         },
         {
+            'id': 2,
             'name': 'tier',
             'description': 'A tier is assigned to a control group and represents a level of criticality for the workloads running in it. Common tiers are Development, Staging and Production.',
             'parent_id': 1
         },
         {
+            'id': 3,
             'name': 'cluster',
             'description': 'A cluster lives in a tier and hosts containerized workloads. The clusters workloads are controlled by a container orchestration tool.',
             'parent_id': 2
@@ -21,6 +24,7 @@ PROVISIONER_DEFAULTS = {
     ],
     'configuration_templates': [
         {
+            'id': 1,
             'name': 'default_control_group',
             'configuration': {
                 'control_cluster': False,  # if True provision control VPC and server
@@ -35,6 +39,7 @@ PROVISIONER_DEFAULTS = {
             'jurisdiction_type_id': 1
         },
         {
+            'id': 2,
             'name': 'default_dev_tier',
             'configuration': {
                 'support_cluster': False,  # if True create support VPC
@@ -51,6 +56,7 @@ PROVISIONER_DEFAULTS = {
             'jurisdiction_type_id': 2
         },
         {
+            'id': 3,
             'name': 'default_dev_01_cluster',
             'configuration': {
                 'coreos_release_channel': 'stable',
@@ -975,7 +981,8 @@ def load_defaults(db):
     for jt in PROVISIONER_DEFAULTS['jurisdiction_types']:
         with db.transaction() as session:
             session.add(JurisdictionType(name=jt['name'],
-                                         description=jt['description']))
+                                         description=jt['description'],
+                                         parent_id=jt['parent_id']))
 
     # configurations
     with db.transaction() as session:

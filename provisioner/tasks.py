@@ -136,3 +136,31 @@ def monitor_cluster_nodes(jurisdiction_id):
                     if checks > 30:
                         nodes_ready = True
 
+
+@mq.task
+def monitor_decommission(jurisdiction_id, nodes_stack_id, net_stack_id):
+    """
+    Monitor the cluster node stack deletion. Once it's complete, trigger the
+    deletion of the cluster network stack.
+    """
+    with db.transaction() as session:
+        j = session.query(Jurisdiction).filter_by(id=jurisdiction_id).one()
+        region = j.parent.parent.configuration['region']
+        cf_client = boto3.client('cloudformation', region_name=region)
+
+        deletion_complete = False
+        checks = 0
+        while not deletion_complete:
+            time.sleep(30)
+            if j.parent.parent.configuration['platform'] == 'amazon_web_services':
+                node_stack = cf_client.describe_stacks(StackName=nodes_stack_id)
+                status = node_stack['Stacks'][0]['StackStatus']
+                if status == 'DELETE_COMPLETE':
+                    cf_client.delete_stack(StackName=net_stack_id)
+                    deletion_complete = True
+                elif status[-6:] == 'FAILED':
+                    deletion_complete = True
+                checks += 1
+                if checks > 30:
+                    deletion_complete = True
+
