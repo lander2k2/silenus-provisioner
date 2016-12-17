@@ -26,6 +26,6 @@ requests==2.11.1
 s3transfer==0.1.8
 six==1.10.0
 SQLAlchemy==1.0.15
-supervisor==4.0.0.dev0
+-e git+https://github.com/Supervisor/supervisor.git@bad867bae6dcf7f904f2d4b66572944a191b0ab5#egg=supervisor
 troposphere==1.8.2
 
