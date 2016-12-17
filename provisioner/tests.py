@@ -10,9 +10,14 @@ import falcon
 
 class TestProvisioner(unittest.TestCase):
 
+    supervisor_conf = os.path.join(
+                          os.path.dirname(os.path.realpath(__file__)),
+                          '..', 'dev', 'supervisord.conf'
+                      )
+
     def setUp(self):
         try:
-            output = check_output(['supervisorctl', '-c', '../supervisord.conf',
+            output = check_output(['supervisorctl', '-c', self.supervisor_conf,
                                    'status', 'provisioner:worker'])
             status = output.decode('utf-8')
         except CalledProcessError as e:
@@ -20,12 +25,12 @@ class TestProvisioner(unittest.TestCase):
 
         if 'RUNNING' in status:
             self.worker_running = True
-            call(['supervisorctl', '-c', '../supervisord.conf',
+            call(['supervisorctl', '-c', self.supervisor_conf,
                   'stop', 'provisioner:worker'])
         else:
             self.worker_running = False
 
-        call(['supervisorctl', '-c', '../supervisord.conf',
+        call(['supervisorctl', '-c', self.supervisor_conf,
               'start', 'test_worker'])
 
         os.environ['SILENUS_PROVISIONER_DB_NAME'] = os.environ.get('SILENUS_PROVISIONER_TEST_DB_NAME')
@@ -33,11 +38,11 @@ class TestProvisioner(unittest.TestCase):
         defaults.load_defaults(db)
 
     def tearDown(self):
-        call(['supervisorctl', '-c', '../supervisord.conf',
+        call(['supervisorctl', '-c', self.supervisor_conf,
               'stop', 'test_worker'])
 
         if self.worker_running:
-            call(['supervisorctl', '-c', '../supervisord.conf',
+            call(['supervisorctl', '-c', self.supervisor_conf,
                   'start', 'provisioner:worker'])
 
         db.engine.dispose()
