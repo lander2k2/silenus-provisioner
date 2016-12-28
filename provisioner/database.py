@@ -35,10 +35,10 @@ class Database(object):
 
 
 if __name__ == '__main__':
-    db = Database(os.environ.get('SILENUS_PROVISIONER_DB_HOST'),
-                  os.environ.get('SILENUS_PROVISIONER_DB_NAME'),
-                  os.environ.get('SILENUS_PROVISIONER_DB_USER'),
-                  os.environ.get('SILENUS_PROVISIONER_DB_PWD'))
+    db = Database(os.environ.get('DB_HOST'),
+                  os.environ.get('POSTGRES_DB'),
+                  os.environ.get('POSTGRES_USER'),
+                  os.environ.get('POSTGRES_PASSWORD'))
     db.create()
     defaults.load_defaults(db)
 

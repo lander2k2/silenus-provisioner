@@ -33,7 +33,7 @@ class TestProvisioner(unittest.TestCase):
         call(['supervisorctl', '-c', self.supervisor_conf,
               'start', 'test_worker'])
 
-        os.environ['SILENUS_PROVISIONER_DB_NAME'] = os.environ.get('SILENUS_PROVISIONER_TEST_DB_NAME')
+        os.environ['POSTGRES_DB'] = os.environ.get('TEST_POSTGRES_DB')
         db.create()
         defaults.load_defaults(db)
 
@@ -46,9 +46,9 @@ class TestProvisioner(unittest.TestCase):
                   'start', 'provisioner:worker'])
 
         db.engine.dispose()
-        call(['dropdb', os.environ.get('SILENUS_PROVISIONER_DB_NAME')])
+        call(['dropdb', os.environ.get('POSTGRES_DB')])
 
-        os.environ['SILENUS_PROVISIONER_DB_NAME'] = existing_db_name
+        os.environ['POSTGRES_DB'] = existing_db_name
 
     def test_jurisdiction_types(self):
         # request non-existent
@@ -316,8 +316,8 @@ class TestProvisioner(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    existing_db_name = os.environ.get('SILENUS_PROVISIONER_DB_NAME')
-    os.environ['SILENUS_PROVISIONER_DB_NAME'] = os.environ.get('SILENUS_PROVISIONER_TEST_DB_NAME')
+    existing_db_name = os.environ.get('POSTGRES_DB')
+    os.environ['POSTGRES_DB'] = os.environ.get('TEST_POSTGRES_DB')
     from provisioner import api
     from provisioner import db
     from provisioner import defaults

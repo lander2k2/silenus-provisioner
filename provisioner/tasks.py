@@ -10,9 +10,10 @@ from provisioner import db
 from provisioner.models import Jurisdiction
 
 
-mq = Celery('tasks', broker='amqp://{0}@{1}//'.format(
-                            os.environ.get('SILENUS_PROVISIONER_MQ_USER'),
-                            os.environ.get('SILENUS_PROVISIONER_MQ_HOST')))
+mq = Celery('tasks', broker='amqp://{0}:{1}@{2}//'.format(
+                                    os.environ.get('RABBITMQ_DEFAULT_USER'),
+                                    os.environ.get('RABBITMQ_DEFAULT_PASS'),
+                                    os.environ.get('RABBITMQ_HOST')))
 mq.conf.update(CELERY_TASK_SERIALIZER = 'json')
 mq.conf.update(CELERY_RESULT_SERIALIZER = 'json')
 
