@@ -3,6 +3,7 @@ import os
 from contextlib import contextmanager
 from subprocess import call
 
+import psycopg2
 import sqlalchemy
 
 from provisioner import defaults
@@ -35,10 +36,20 @@ class Database(object):
 
 
 if __name__ == '__main__':
-    db = Database(os.environ.get('DB_HOST'),
-                  os.environ.get('POSTGRES_DB'),
-                  os.environ.get('POSTGRES_USER'),
-                  os.environ.get('POSTGRES_PASSWORD'))
-    db.create()
-    defaults.load_defaults(db)
+    db_host = os.environ.get('DB_HOST')
+    db_name = os.environ.get('POSTGRES_DB')
+    db_user = os.environ.get('POSTGRES_USER')
+    db_pwd = os.environ.get('POSTGRES_PASSWORD')
+
+    try:
+        psycopg2.connect(host=db_host, database=db_name, user=db_user, password=db_pwd)
+        exit('Database already exists')
+    except psycopg2.OperationalError as e:
+        err_msg = 'database "{}" does not exist'.format(db_name)
+        if err_msg in str(e):
+            db = Database(db_host, db_name, db_user, db_pwd)
+            db.create()
+            defaults.load_defaults(db)
+        else:
+            raise
 
