@@ -10,10 +10,11 @@ RUN pip install -r /var/www/requirements/container.txt
 
 COPY container/nginx.conf /etc/nginx/
 COPY container/supervisord.conf /etc/supervisor.d/
+COPY container/docker-entrypoint.sh /
 
 ENV PYTHONPATH /var/www
 
 EXPOSE 80
 
-CMD ["supervisord", "-c", "/etc/supervisor.d/supervisord.conf", "-n"]
+CMD ["/bin/bash", "/docker-entrypoint.sh"]
 
