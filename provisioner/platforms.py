@@ -351,7 +351,7 @@ class AWS(object):
 
         cf_client = boto3.client('cloudformation', region_name=self.region)
         cf_stack = cf_client.create_stack(StackName=stack_name,
-                                             TemplateBody=cg_template_content)
+                                          TemplateBody=cg_template_content)
 
         return {
             'cloudformation_stack': {
@@ -1314,14 +1314,16 @@ class AWS(object):
                 s3_client = boto3.client('s3', region_name=self.region)
                 objects = s3_client.list_objects_v2(
                                 Bucket=self.jurisdiction.assets['s3_bucket'])
-                delete = []
-                for obj in objects['Contents']:
-                    delete.append({'Key': obj['Key']})
-                s3_client.delete_objects(
-                            Bucket=self.jurisdiction.assets['s3_bucket'],
-                            Delete={
-                                'Objects': delete
-                            })
+                bucket_contents = objects.get('Contents')
+                if bucket_contents:
+                    delete = []
+                    for obj in bucket_contents:
+                        delete.append({'Key': obj['Key']})
+                    s3_client.delete_objects(
+                                Bucket=self.jurisdiction.assets['s3_bucket'],
+                                Delete={
+                                    'Objects': delete
+                                })
 
             cf_client.delete_stack(
                 StackName=self.jurisdiction.assets['cloudformation_stack']['stack_id'])
