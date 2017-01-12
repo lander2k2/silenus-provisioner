@@ -13,6 +13,7 @@ from provisioner.tasks import monitor_cloudformation_stack
 
 
 def get_objects(obj, obj_id, session):
+    """Retrieve objects from database"""
 
     if obj_id:
         try:
@@ -27,6 +28,7 @@ def get_objects(obj, obj_id, session):
 
 
 def get_object_attributes(obj, obj_id, session):
+    """Retrieve the attributes of an object"""
 
     if obj_id:
         objects = [get_objects(obj, obj_id, session)]
@@ -42,7 +44,27 @@ def get_object_attributes(obj, obj_id, session):
 
 @hug.get('/get_jurisdiction_types/', version=1)
 def get_jurisdiction_types(jurisdiction_type_id: hug.types.number=None):
+    """
+    A jurisdiciton is a group of instructure resources that have a particular
+    extent of operation and control. Jurisdictions of different types may be
+    nested within one another with nested jurisdictions have narrower extent
+    of operation and control.
 
+    There are three default jurisdiction types:
+        * Control Group - the widest scope of operation and control. It includes
+          infrastructure used to manage multiple tiers.
+        * Tier - a narrower scope of infrastructure. A tier represents a level
+          of criticality of workload. For example, a  production tier's uptime
+          is highly critical and tightly controlled as compared to a development
+          tier. There may be zero or more tiers in a control group.
+        * Cluster - the narrowest scope of operation and control. It represents
+          of servers running containerized workloads using a container orchestration
+          tool.  There may be zero or more clusters per tier.
+
+    It is possible to create and define more jurisdiction types in addition
+    to the defaults listed above. This handler returns jurisdiction types currently
+    in the system.
+    """
     with db.transaction() as session:
         jt_attrs = get_object_attributes(JurisdictionType,
                                          jurisdiction_type_id,
@@ -53,7 +75,12 @@ def get_jurisdiction_types(jurisdiction_type_id: hug.types.number=None):
 
 @hug.get('/get_configuration_templates/', version=1)
 def get_configuration_templates(configuration_template_id: hug.types.number=None):
+    """
+    A configuration template defines the default configuration values for a
+    jurisdiction type.
 
+    This handler returns the configuration templates currently in the system.
+    """
     with db.transaction() as session:
         ct_attrs = get_object_attributes(ConfigurationTemplate,
                                          configuration_template_id,
@@ -64,7 +91,14 @@ def get_configuration_templates(configuration_template_id: hug.types.number=None
 
 @hug.get('/get_jurisdictions/', version=1)
 def get_jurisdictions(jurisdiction_id: hug.types.number=None):
+    """
+    A jurisdiciton is a group of instructure resources that have a particular
+    extent of operation and control. Jurisdictions of different types may be
+    nested within one another with nested jurisdictions have narrower extent
+    of operation and control.
 
+    This handler returns the jurisdictions currently in the system.
+    """
     with db.transaction() as session:
         j_attrs = get_object_attributes(Jurisdiction,
                                         jurisdiction_id,
@@ -78,7 +112,23 @@ def create_jurisdiction(jurisdiction_name: hug.types.text,
                         jurisdiction_type_id: hug.types.number,
                         configuration_template_id: hug.types.number,
                         parent_id: hug.types.number=None):
+    """
+    A jurisdiciton is a group of instructure resources that have a particular
+    extent of operation and control. Jurisdictions of different types may be
+    nested within one another with nested jurisdictions have narrower extent
+    of operation and control.
 
+    This handler allows the user to create a jurisdiction by providing a
+    jurisdiction type ID, a configuration template ID and, optionally, a
+    parent ID if the jurisdiction is nested within another jurisdiction.
+
+    Creating a jurisdiction creates a new database records which defines the
+    jurisdiction's attributes but does not actually provision any infrastructure.
+
+    After creation, default configuration values may be modified and then the
+    jurisdiction may be provisioned which actually stands up the infrastructure
+    required.
+    """
     with db.transaction() as session:
         name_exists = session.query(sqlalchemy.sql.exists().where(
                             Jurisdiction.name == jurisdiction_name)).scalar()
@@ -116,7 +166,15 @@ def create_jurisdiction(jurisdiction_name: hug.types.text,
 
 @hug.put('/edit_jurisdiction/', version=1)
 def edit_jurisdiction(jurisdiction_id: hug.types.number, **edits):
+    """
+    A jurisdiciton is a group of instructure resources that have a particular
+    extent of operation and control. Jurisdictions of different types may be
+    nested within one another with nested jurisdictions have narrower extent
+    of operation and control.
 
+    This handler allows the user to edit the configuration values of a
+    jurisdiction after it has been created and before it has been provisioned.
+    """
     # need to change metadata key - sqlalchemy uses metadata as table attribute
     if 'metadata' in edits:
         edits['jurisdiction_metadata'] = edits.pop('metadata')
@@ -140,7 +198,15 @@ def edit_jurisdiction(jurisdiction_id: hug.types.number, **edits):
 
 @hug.put('/provision_jurisdiction/', version=1)
 def provision_jurisdiction(jurisdiction_id: hug.types.number):
+    """
+    A jurisdiciton is a group of instructure resources that have a particular
+    extent of operation and control. Jurisdictions of different types may be
+    nested within one another with nested jurisdictions have narrower extent
+    of operation and control.
 
+    This handler provisions the infrastructure after a jurisdiction has been
+    created and edited as needed.
+    """
     with db.transaction() as session:
         j = get_objects(Jurisdiction, jurisdiction_id, session)
 
@@ -195,7 +261,16 @@ def provision_jurisdiction(jurisdiction_id: hug.types.number):
 
 @hug.put('/decommission_jurisdiction/', version=1)
 def decommission_jurisdiction(jurisdiction_id: hug.types.number):
+    """
+    A jurisdiciton is a group of instructure resources that have a particular
+    extent of operation and control. Jurisdictions of different types may be
+    nested within one another with nested jurisdictions have narrower extent
+    of operation and control.
 
+    This handler removes the jurisdiction's infrastructure but does not delete
+    the jurisdiction from the system. A jurisdiction may be re-provisioned
+    after being decommissioned.
+    """
     with db.transaction() as session:
         j = get_objects(Jurisdiction, jurisdiction_id, session)
 
