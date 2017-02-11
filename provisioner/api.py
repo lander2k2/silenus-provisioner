@@ -70,7 +70,7 @@ def get_jurisdiction_types(jurisdiction_type_id: hug.types.number=None):
                                          jurisdiction_type_id,
                                          session)
 
-    return jt_attrs
+    return {'data': jt_attrs}
 
 
 @hug.get('/get_configuration_templates/', version=1)
@@ -86,7 +86,7 @@ def get_configuration_templates(configuration_template_id: hug.types.number=None
                                          configuration_template_id,
                                          session)
 
-    return ct_attrs
+    return {'data': ct_attrs}
 
 
 @hug.get('/get_jurisdictions/', version=1)
@@ -104,7 +104,7 @@ def get_jurisdictions(jurisdiction_id: hug.types.number=None):
                                         jurisdiction_id,
                                         session)
 
-    return j_attrs
+    return {'data': j_attrs}
 
 
 @hug.post('/create_jurisdiction/', version=1)
@@ -159,9 +159,9 @@ def create_jurisdiction(jurisdiction_name: hug.types.text,
 
     with db.transaction() as session:
         jurisdiction = session.query(Jurisdiction).filter_by(name=jurisdiction_name)[0]
-        response = jurisdiction.__attributes__()
+        data = jurisdiction.__attributes__()
 
-    return response
+    return {'data': data}
 
 
 @hug.put('/edit_jurisdiction/', version=1)
@@ -191,9 +191,9 @@ def edit_jurisdiction(jurisdiction_id: hug.types.number, **edits):
 
     with db.transaction() as session:
         jurisdiction = session.query(Jurisdiction).filter_by(id=jurisdiction_id)[0]
-        response = jurisdiction.__attributes__()
+        data = jurisdiction.__attributes__()
 
-    return response
+    return {'data': data}
 
 
 @hug.put('/provision_jurisdiction/', version=1)
@@ -254,9 +254,9 @@ def provision_jurisdiction(jurisdiction_id: hug.types.number):
 
         j.assets = assets
 
-        response = j.__attributes__()
+        data = j.__attributes__()
 
-    return response
+    return {'data': data}
 
 
 @hug.put('/decommission_jurisdiction/', version=1)
@@ -319,7 +319,7 @@ def decommission_jurisdiction(jurisdiction_id: hug.types.number):
         j.active = False
         j.assets = assets
 
-        response = j.__attributes__()
+        data = j.__attributes__()
 
-    return response
+    return {'data': data}
 
