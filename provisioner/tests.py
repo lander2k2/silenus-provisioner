@@ -58,12 +58,12 @@ class TestProvisioner(unittest.TestCase):
 
         # request all
         self.assertListEqual(prov_defaults['jurisdiction_types'],
-                             api.get_jurisdiction_types())
+                             api.get_jurisdiction_types()['data'])
 
         # request particulars
         for x in range(3):
             self.assertListEqual([prov_defaults['jurisdiction_types'][x]],
-                                 api.get_jurisdiction_types(jurisdiction_type_id=x+1))
+                                 api.get_jurisdiction_types(jurisdiction_type_id=x+1)['data'])
 
     def test_configuration_templates(self):
         # request non-existent
@@ -73,12 +73,12 @@ class TestProvisioner(unittest.TestCase):
 
         # request all
         self.assertListEqual(prov_defaults['configuration_templates'],
-                             api.get_configuration_templates())
+                             api.get_configuration_templates()['data'])
 
         # request particulars
         for x in range(len(prov_defaults['configuration_templates'])):
             self.assertListEqual([prov_defaults['configuration_templates'][x]],
-                                 api.get_configuration_templates(configuration_template_id=x+1))
+                                 api.get_configuration_templates(configuration_template_id=x+1)['data'])
 
     def test_jurisdictions(self):
         test_cg = {
@@ -123,7 +123,7 @@ class TestProvisioner(unittest.TestCase):
             active = False
             while not active:
                 j = api.get_jurisdictions(jurisdiction_id=jurisdiction_id)
-                if not j[0]['active']:
+                if not j['data'][0]['active']:
                     if check_attempts < 30:
                         time.sleep(30)
                         check_attempts += 1
@@ -148,8 +148,8 @@ class TestProvisioner(unittest.TestCase):
                             jurisdiction_name=test_cg['name'],
                             jurisdiction_type_id=test_cg['jurisdiction_type_id'],
                             configuration_template_id=prov_defaults['configuration_templates'][0]['id'])
-        create_cg_resp['created_on'] = None
-        self.assertDictEqual(test_cg, create_cg_resp)
+        create_cg_resp['data']['created_on'] = None
+        self.assertDictEqual(test_cg, create_cg_resp['data'])
 
         # create new tier
         create_tier_resp = api.create_jurisdiction(
@@ -157,8 +157,8 @@ class TestProvisioner(unittest.TestCase):
                                 jurisdiction_type_id=test_tier['jurisdiction_type_id'],
                                 configuration_template_id=prov_defaults['configuration_templates'][1]['id'],
                                 parent_id=test_tier['parent_id'])
-        create_tier_resp['created_on'] = None
-        self.assertDictEqual(test_tier, create_tier_resp)
+        create_tier_resp['data']['created_on'] = None
+        self.assertDictEqual(test_tier, create_tier_resp['data'])
 
         # create new cluster
         create_cluster_resp = api.create_jurisdiction(
@@ -166,8 +166,8 @@ class TestProvisioner(unittest.TestCase):
                                 jurisdiction_type_id=test_cluster['jurisdiction_type_id'],
                                 configuration_template_id=prov_defaults['configuration_templates'][2]['id'],
                                 parent_id=test_cluster['parent_id'])
-        create_cluster_resp['created_on'] = None
-        self.assertDictEqual(test_cluster, create_cluster_resp)
+        create_cluster_resp['data']['created_on'] = None
+        self.assertDictEqual(test_cluster, create_cluster_resp['data'])
 
         # request non-existent
         self.assertRaises(falcon.errors.HTTPBadRequest,
@@ -176,15 +176,15 @@ class TestProvisioner(unittest.TestCase):
 
         # request all
         all_j = api.get_jurisdictions()
-        for j in all_j:
+        for j in all_j['data']:
             j['created_on'] = None
-        self.assertListEqual(test_jurisdictions, all_j)
+        self.assertListEqual(test_jurisdictions, all_j['data'])
 
         # request particulars
         for test_j in test_jurisdictions:
             j = api.get_jurisdictions(jurisdiction_id=int(test_j['id']))
-            j[0]['created_on'] = None
-            self.assertListEqual([test_j], j)
+            j['data'][0]['created_on'] = None
+            self.assertListEqual([test_j], j['data'])
 
         # edit non-existent
         self.assertRaises(falcon.errors.HTTPBadRequest,
@@ -196,8 +196,8 @@ class TestProvisioner(unittest.TestCase):
             test_j['name'] += '_edit'
             j = api.edit_jurisdiction(jurisdiction_id=int(test_j['id']),
                                       **{'name': test_j['name']})
-            j['created_on'] = None
-            self.assertDictEqual(test_j, j)
+            j['data']['created_on'] = None
+            self.assertDictEqual(test_j, j['data'])
 
         # provision tier without control group
         self.assertRaises(falcon.errors.HTTPBadRequest,
@@ -207,41 +207,41 @@ class TestProvisioner(unittest.TestCase):
         # succuessful control group provision
         prov_cg = api.provision_jurisdiction(jurisdiction_id=1)
         self.assertTrue(isinstance(
-            prov_cg['assets']['cloudformation_stack']['stack_id'],
+            prov_cg['data']['assets']['cloudformation_stack']['stack_id'],
             str
         ))
         self.assertTrue(stack_id_exists(
-            prov_cg['assets']['cloudformation_stack']['stack_id']#,
+            prov_cg['data']['assets']['cloudformation_stack']['stack_id']#,
         ))
 
         # ensure control group activates
-        self.assertTrue(jurisdiction_active(prov_cg['id']))
+        self.assertTrue(jurisdiction_active(prov_cg['data']['id']))
 
         # successful tier provision
         prov_tier = api.provision_jurisdiction(jurisdiction_id=2)
         self.assertTrue(isinstance(
-            prov_tier['assets']['cloudformation_stack']['stack_id'],
+            prov_tier['data']['assets']['cloudformation_stack']['stack_id'],
             str
         ))
         self.assertTrue(stack_id_exists(
-            prov_tier['assets']['cloudformation_stack']['stack_id']#,
+            prov_tier['data']['assets']['cloudformation_stack']['stack_id']#,
         ))
 
         # ensure tier activates
-        self.assertTrue(jurisdiction_active(prov_tier['id']))
+        self.assertTrue(jurisdiction_active(prov_tier['data']['id']))
 
         # successful cluster provision
         prov_cluster = api.provision_jurisdiction(jurisdiction_id=3)
         self.assertTrue(isinstance(
-            prov_cluster['assets']['cloudformation_stack']['network']['stack_id'],
+            prov_cluster['data']['assets']['cloudformation_stack']['network']['stack_id'],
             str
         ))
         self.assertTrue(stack_id_exists(
-            prov_cluster['assets']['cloudformation_stack']['network']['stack_id']#,
+            prov_cluster['data']['assets']['cloudformation_stack']['network']['stack_id']#,
         ))
 
         # ensure cluster activates
-        self.assertTrue(jurisdiction_active(prov_cluster['id']))
+        self.assertTrue(jurisdiction_active(prov_cluster['data']['id']))
 
         # attempt to decommission tier with active cluster
         self.assertRaises(falcon.errors.HTTPBadRequest,
@@ -255,13 +255,13 @@ class TestProvisioner(unittest.TestCase):
 
         # successful cluster decommission
         decom_cluster = api.decommission_jurisdiction(jurisdiction_id=3)
-        self.assertFalse(decom_cluster['active'])
+        self.assertFalse(decom_cluster['data']['active'])
         cluster_delete_checks = 0
         cluster_deleted = False
         while not cluster_deleted:
             stacks = cf_client.list_stacks()
             for s in stacks['StackSummaries']:
-                if s['StackId'] == prov_cluster['assets']['cloudformation_stack']['network']['stack_id']:
+                if s['StackId'] == prov_cluster['data']['assets']['cloudformation_stack']['network']['stack_id']:
                     if not s['StackStatus'] == 'DELETE_COMPLETE':
                         self.assertLess(cluster_delete_checks, 30)
                         time.sleep(30)
@@ -272,13 +272,13 @@ class TestProvisioner(unittest.TestCase):
 
         # successful tier decommisssion
         decom_tier = api.decommission_jurisdiction(jurisdiction_id=2)
-        self.assertFalse(decom_tier['active'])
+        self.assertFalse(decom_tier['data']['active'])
         tier_delete_checks = 0
         tier_deleted = False
         while not tier_deleted:
             stacks = cf_client.list_stacks()
             for s in stacks['StackSummaries']:
-                if s['StackId'] == prov_tier['assets']['cloudformation_stack']['stack_id']:
+                if s['StackId'] == prov_tier['data']['assets']['cloudformation_stack']['stack_id']:
                     if not s['StackStatus'] == 'DELETE_COMPLETE':
                         self.assertLess(tier_delete_checks, 30)
                         time.sleep(20)
@@ -289,7 +289,7 @@ class TestProvisioner(unittest.TestCase):
 
         # successful control group decommission
         decom_cg = api.decommission_jurisdiction(jurisdiction_id=1)
-        self.assertFalse(decom_cg['active'])
+        self.assertFalse(decom_cg['data']['active'])
 
         # try to decommision inactive control group
         self.assertRaises(falcon.errors.HTTPBadRequest,
